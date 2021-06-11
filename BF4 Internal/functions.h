@@ -2,54 +2,76 @@
 
 #pragma warning(disable : 4996)
 
-#include <iostream>
-#include <Windows.h>
-#include <future>
-#include <math.h>
+#include "includes.h"
+#include "globals.h"
+#include "classes.h"
 
-using namespace std;
+void clearConsole() {
+  COORD topLeft = { 0, 0 };
+  HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+  CONSOLE_SCREEN_BUFFER_INFO screen;
+  DWORD written;
 
-DWORD64 GameContext, ClientPlayerManager, ClientPlayer, IdToPlayerMapOffset;
-DWORD64 GameRenderer, RenderView;
-__int64 ZeroingDistanceLevel;
-float ClientFovX, ClientFovY;
-vector<vector<float>> ViewMatrixInverse(4, vector<float>(4));
-vector<vector<float>> ViewProjection(4, vector<float>(4));
+  GetConsoleScreenBufferInfo(console, &screen);
+  FillConsoleOutputCharacterA(
+	console, ' ', screen.dwSize.X * screen.dwSize.Y, topLeft, &written
+  );
+  FillConsoleOutputAttribute(
+	console, FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE,
+	screen.dwSize.X * screen.dwSize.Y, topLeft, &written
+  );
+  SetConsoleCursorPosition(console, topLeft);
+}
 
-__int64 SCREEN_X;
-__int64 SCREEN_Y;
+void printLogo() {
+  cout << ":::::::::  ::::::::::     :::               :::::::::  :::    ::: :::::::::   ::::::::  :::::::::: " << endl;
+  cout << ":+:    :+: :+:           :+:                :+:    :+: :+:    :+: :+:    :+: :+:    :+: :+:        " << endl;
+  cout << "+:+    +:+ +:+          +:+ +:+             +:+    +:+ +:+    +:+ +:+    +:+ +:+        +:+   " << endl;
+  cout << "+#++:++#+  :#::+::#    +#+  +:+             +#++:++#+  +#+    +:+ +#++:++#:  :#:        +#++:++#  " << endl;
+  cout << "+#+    +#+ +#+        +#+#+#+#+#+           +#+        +#+    +#+ +#+    +#+ +#+   +#+# +#+  " << endl;
+  cout << "#+#    #+# #+#              #+#             #+#        #+#    #+# #+#    #+# #+#    #+# #+#  " << endl;
+  cout << "#########  ###              ###             ###         ########  ###    ###  ########  ########## " << endl;
+  cout << "" << endl;
+  cout << ":::::::::  :::   :::               ::::::::::: ::::    ::: :::    ::: " << endl;
+  cout << ":+:    :+: :+:   :+:                   :+:     :+:+:   :+: :+:   :+:" << endl;
+  cout << "+:+    +:+  +:+ +:+                    +:+     :+:+:+  +:+ +:+  +:+" << endl;
+  cout << "+#++:++#+    +#++:                     +#+     +#+ +:+ +#+ +#++:++" << endl;
+  cout << "+#+    +#+    +#+                      +#+     +#+  +#+#+# +#+  +#+   " << endl;
+  cout << "#+#    #+#    #+#                      #+#     #+#   #+#+# #+#   #+#  " << endl;
+  cout << "#########     ###                  ########### ###    #### ###    ### " << endl;
+  cout << "" << endl;
+  cout << "---------------------------------------------------------------------------------------------------" << endl;
+  cout << "" << endl;
+}
 
-const float  PI_F = 3.14159265358979f;
+void updateConsole() {
+  clearConsole();
+  printLogo();
+  cout << "NUMPAD 1: No Recoil      ::  " << (B_NORECOIL ? "ENABLED" : "DISABLED") << endl;
+  cout << "NUMPAD 2: No Spread      ::  " << (B_NOSPREAD ? "ENABLED" : "DISABLED") << endl;
+  cout << "NUMPAD 5: Aimbot Key     ::  " << (AIMBOT_KEY == 1 ? "LEFT ALT" : AIMBOT_KEY == 2 ? "RMB" : "DISABLED") << endl;
+  cout << "NUMPAD 6: Aimbot Target  ::  " << (AIMBOT_TARGET == 1 ? "HEAD" : AIMBOT_TARGET == 2 ? "NECK" : AIMBOT_TARGET == 3 ? "SPINE 1" : "SPINE 2") << endl;
+  cout << "NUMPAD 7: Minimpap Spot  ::  " << (B_MINIMAPSPOT ? "ENABLED" : "DISABLED") << endl;
+  cout << "NUMPAD 8: Engine Chams   ::  " << (B_CHAMS ? "ENABLED" : "DISABLED") << endl;
+  cout << "NUMPAD 9: Enable HUD     ::  " << (B_HARDCORE ? "ENABLED" : "DISABLED") << endl;
+}
 
-HANDLE hRead, hWrite;
+void readBytes(DWORD64 address, void* destination, SIZE_T size) {
+  memcpy(destination, (void*)address, size);
+}
 
-BOOL B_MINIMAPSPOT(0), B_NORECOIL(0), B_NOSPREAD(0);
-
-BOOL closeThread(0), threadHasClosed(0), aimbotThreadHasClosed(1);
-
-class WeaponData {
-public:
-  float ADSRecoil = 0;
-  float HipRecoil = 0;
-  float WeaponSpread = 0;
-  int Ammo = 0;
-  int AmmoInMag = 0;
-  string Name = "";
-  BOOL successRead = false;
-  float ZeroingRad = 0;
-  vector<float> Velocity = vector<float>(3, 0);
-  vector<float> Offset = vector<float>(3, 0);
-  float Gravity = 0;
-};
-
-vector<WeaponData> WeaponList;
-vector<WeaponData> BackupWeaponList;
+void writeBytes(DWORD64 address, void* bytes, SIZE_T size, int debug = 0) {
+  DWORD protect;
+  VirtualProtect((LPVOID)address, size, PAGE_EXECUTE_READWRITE, &protect);
+  memcpy((void*)address, &bytes, size);
+  VirtualProtect((LPVOID)address, size, protect, &protect);
+}
 
 string ReadString(DWORD64 address, size_t size) {
   LPCVOID param = (LPCVOID)address;
 
   char* str = new char[size];
-  str = (char*)address;
+  readBytes(address, str, size);
 
   string temp(&str[0], &str[size]);
   char* t_str = strtok(&temp[0], "\0");
@@ -59,10 +81,12 @@ string ReadString(DWORD64 address, size_t size) {
 
 vector<float> ReadVector(DWORD64 vectorAddress) {
   vector<float> vector3;
-
-  vector3.push_back(*(float*)(vectorAddress + 0x0));
-  vector3.push_back(*(float*)(vectorAddress + 0x4));
-  vector3.push_back(*(float*)(vectorAddress + 0x8));
+  
+  float temp;
+  for (int i = 0; i < 3; i++) {
+	readBytes(vectorAddress + (i * 0x4), &temp, 4);
+	vector3.push_back(temp);
+  }
 
   return vector3;
 }
@@ -71,9 +95,11 @@ vector<vector<float>> ReadMatrix(DWORD64 mAddress) {
   vector<vector<float>> matrix(4, vector<float>(4));
 
   __int64 offset = 0;
+  float temp;
   for (__int64 i = 0; i < 4; i++) {
 	for (__int64 j = 0; j < 4; j++) {
-	  matrix.at(i).at(j) = *(float*)(mAddress + offset);
+	  readBytes(mAddress + offset, &temp, 4);
+	  matrix.at(i).at(j) = temp;
 	  offset += 0x4;
 	}
   }
@@ -128,83 +154,49 @@ BOOL Valid(DWORD64 pointer) {
   return (pointer >= 0x10000 && pointer <= 0x0F000000000000);
 };
 
-BOOL ValidSlot(__int64 ActiveSlot) {
-  return (ActiveSlot >= 0 && ActiveSlot <= 1);
+BOOL ValidSlot(int ActiveSlot) {
+  return (ActiveSlot >= 0 && ActiveSlot <= 6 && (ActiveSlot <= 2 || ActiveSlot >= 5));
 }
 
-void readData(DWORD64 moduleBase) {
-  GameContext = *(DWORD64*)(moduleBase + 0x2670D80);
+void readData() {
+  readBytes(moduleBase + 0x2670D80, &GameContext, 8);
   if (Valid(GameContext)) {
-	ClientPlayerManager = *(DWORD64*)(GameContext + 0x60);
+	readBytes(GameContext + 0x60, &ClientPlayerManager, 8);
 	if (Valid(ClientPlayerManager)) {
-	  ClientPlayer = *(DWORD64*)(ClientPlayerManager + 0x540);
-	  IdToPlayerMapOffset = *(DWORD64*)(ClientPlayerManager + 0x548);
+	  readBytes(ClientPlayerManager + 0x540, &ClientPlayer, 8);
+	  readBytes(ClientPlayerManager + 0x548, &IdToPlayerMapOffset, 8);
 	}
   }
 }
 
 void loadGameContext() {
-  DWORD64 moduleBase = (DWORD64)GetModuleHandle(NULL);
+  moduleBase = (DWORD64)GetModuleHandle(NULL);
   while (true) {
-	readData(moduleBase);
+	readData();
 	if (Valid(IdToPlayerMapOffset)) {
-	  cout << "Library Loaded! Game Context: 0x0" << hex << GameContext << endl;
 	  return;
 	}
 	Sleep(200);
   }
 }
 
-void minimapSpot() {
-  DWORD64 pPlayer, pCharacter, pSoldier, spottingTarget;
-  char spotType;
-
-  for (__int64 i = 0; i < 70; i++) {
-	pPlayer = *(DWORD64*)(IdToPlayerMapOffset + (i * 0x8));
-	if (Valid(pPlayer)) {
-	  pCharacter = *(DWORD64*)(pPlayer + 0x14b0);
-	  if (Valid(pCharacter)) {
-		pSoldier = *(DWORD64*)(pCharacter);
-		if (Valid(pSoldier)) {
-		  spottingTarget = *(DWORD64*)(pSoldier + 0xbe8);
-		  if (Valid(spottingTarget)) {
-			spotType = *(char*)(spottingTarget + 0x50);
-			if (spotType != 1) *(char*)(spottingTarget + 0x50) = 1;
-		  }
-		}
-	  }
-	}
-  }
-}
-
-int findWeapon(string weaponName) {
-  if (WeaponList.size() == 0) return -1;
-  for (int i = 0; i < WeaponList.size(); i++) {
-	if (WeaponList[i].Name == weaponName) {
-	  return i;
-	}
-  }
-
-  return -1;
-}
-
 DWORD64 getWeaponPointer() {
-  DWORD64 ClientPlayer, Character, ClientSoldier, SoldierWeaponComponent, CurrentAnimatedWeaponHandler;
+  DWORD64 Character, ClientSoldier, SoldierWeaponComponent, CurrentAnimatedWeaponHandler;
   DWORD64 CurrentWeapon = 0;
-  __int64 ActiveSlot;
-  ClientPlayer = *(DWORD64*)(ClientPlayerManager + 0x540);
+  int ActiveSlot;
+
   if (Valid(ClientPlayer)) {
-	Character = *(DWORD64*)(ClientPlayer + 0x14b0);
+	readBytes(ClientPlayer + 0x14b0, &Character, 8);
 	if (Valid(Character)) {
-	  ClientSoldier = *(DWORD64*)(Character);
+	  readBytes(Character, &ClientSoldier, 8);
 	  if (Valid(ClientSoldier)) {
-		SoldierWeaponComponent = *(DWORD64*)(ClientSoldier + 0x568);
+		readBytes(ClientSoldier + 0x568, &SoldierWeaponComponent, 8);
 		if (Valid(SoldierWeaponComponent)) {
-		  CurrentAnimatedWeaponHandler = *(DWORD64*)(SoldierWeaponComponent + 0x890);
-		  ActiveSlot = *(int*)(SoldierWeaponComponent + 0xa98);
-		  ZeroingDistanceLevel = *(int*)(SoldierWeaponComponent + 0xac8);
+		  readBytes(SoldierWeaponComponent + 0x890, &CurrentAnimatedWeaponHandler, 8);
+		  readBytes(SoldierWeaponComponent + 0xa98, &ActiveSlot, 4);
+		  readBytes(SoldierWeaponComponent + 0xac8, &ZeroingDistanceLevel, 4);
 		  if (Valid(CurrentAnimatedWeaponHandler) && ValidSlot(ActiveSlot)) {
-			CurrentWeapon = *(DWORD64*)(CurrentAnimatedWeaponHandler + (ActiveSlot * 0x8));
+			readBytes(CurrentAnimatedWeaponHandler + (ActiveSlot * 0x8), &CurrentWeapon, 8);
 		  }
 		}
 	  }
@@ -214,173 +206,91 @@ DWORD64 getWeaponPointer() {
   return CurrentWeapon;
 }
 
-WeaponData getWeaponData(DWORD64 ptr = 0) {
-  DWORD64 CurrentWeapon, CFiring, WeaponSway, WeaponSwayData, WeaponName, CurrentWeaponName;
-  DWORD64 PrimaryFire, FiringFunctionData, BulletEntityData, WeaponModifier, isSilenced, WeaponZeroingModifier, pModes;
+vector<float> getBonePosition(DWORD64 address, __int64 boneIndex) {
+  DWORD64 RagdollComponent, pQuatTransform;
+  char ValidTransform;
+  vector<float> Position = vector<float>(3, 0);
 
-  CurrentWeapon = ptr;
-  if (!ptr) CurrentWeapon = getWeaponPointer();
-  WeaponData myWeapon;
-  if (CurrentWeapon == 0xcccccccc || !Valid(CurrentWeapon)) return myWeapon;
-  if (Valid(CurrentWeapon)) {
-	WeaponName = *(DWORD64*)(CurrentWeapon + 0x30);
-	if (Valid(WeaponName)) {
-	  CurrentWeaponName = *(DWORD64*)(WeaponName + 0x130);
-	  if (Valid(CurrentWeaponName)) {
-		myWeapon.Name = ReadString(CurrentWeaponName, 100);
-	  }
-	}
-
-	CFiring = *(DWORD64*)(CurrentWeapon + 0x49c0);
-	if (Valid(CFiring)) {
-	  WeaponSway = *(DWORD64*)(CFiring + 0x78);
-	  if (Valid(WeaponSway)) {
-		WeaponSwayData = *(DWORD64*)(WeaponSway + 0x8);
-		if (Valid(WeaponSwayData)) {
-		  myWeapon.ADSRecoil = *(float*)(WeaponSwayData + 0x444);
-		  myWeapon.HipRecoil = *(float*)(WeaponSwayData + 0x440);
-		  myWeapon.WeaponSpread = *(float*)(WeaponSwayData + 0x430);
-		}
-	  }
-
-	  myWeapon.Ammo = *(int*)(CFiring + 0x1a0);
-	  myWeapon.AmmoInMag = *(int*)(CFiring + 0x1a4);
-
-	  PrimaryFire = *(DWORD64*)(CFiring + 0x128);
-	  if (Valid(PrimaryFire)) {
-		FiringFunctionData = *(DWORD64*)(PrimaryFire + 0x10);
-		if (Valid(FiringFunctionData)) {
-		  myWeapon.Offset = ReadVector(FiringFunctionData + 0x60);
-		  myWeapon.Velocity = ReadVector(FiringFunctionData + 0x80);
-
-		  BulletEntityData = *(DWORD64*)(FiringFunctionData + 0xb0);
-		  if (Valid(BulletEntityData)) {
-			myWeapon.Gravity = *(float*)(BulletEntityData + 0x130);
-			if (myWeapon.Gravity != 0) myWeapon.successRead = true;
-		  }
-		}
-	  }
-
-	  WeaponModifier = *(DWORD64*)(CFiring + 0x1f0);
-	  if (Valid(WeaponModifier)) {
-		isSilenced = *(DWORD64*)(WeaponModifier + 0x68);
-		if (Valid(isSilenced)) {
-		  myWeapon.Velocity = ReadVector(isSilenced + 0x20);
-		}
-
-		WeaponZeroingModifier = *(DWORD64*)(WeaponModifier + 0xc0);
-		if (Valid(WeaponZeroingModifier)) {
-		  pModes = *(DWORD64*)(WeaponZeroingModifier + 0x18);
-		  if (Valid(pModes)) {
-			if (ZeroingDistanceLevel < 5 && ZeroingDistanceLevel >= 0) {
-			  vector<float> zeroing = ReadVector(pModes + (ZeroingDistanceLevel * 0x8));
-			  myWeapon.ZeroingRad = zeroing[1];
-			}
-			else {
-			  myWeapon.ZeroingRad = 0;
-			}
-		  }
-		}
+  readBytes(address + 0x580, &RagdollComponent, 8);
+  if (Valid(RagdollComponent)) {
+	readBytes(RagdollComponent + 0xc8, &ValidTransform, 1);
+	if (ValidTransform > 0) {
+	  readBytes(RagdollComponent + 0xb0, &pQuatTransform, 8);
+	  if (Valid(pQuatTransform)) {
+		Position = ReadVector(pQuatTransform + (boneIndex * 0x20));
+		return Position;
 	  }
 	}
   }
 
-  if (myWeapon.successRead) {
-	if (findWeapon(myWeapon.Name) == -1) {
-	  WeaponList.push_back(myWeapon);
-	  BackupWeaponList.push_back(myWeapon);
+  return { 0, 0, 0 };
+}
+
+vector<float> getWorldVector(EnemyData Enemy) {
+  if (!myWeapon.successRead || !Valid(Enemy.SoldierPointer)) {
+	return { 0, 0, 0 };
+  }
+  vector<float> AimVector = getBonePosition(Enemy.SoldierPointer, BONE_INDEX);
+  vector<float> CamPos = { ViewMatrixInverse.at(3).at(0), ViewMatrixInverse.at(3).at(1) - myWeapon.Offset[1], ViewMatrixInverse.at(3).at(2) };
+  float Dist = Distance(CamPos, AimVector);
+  float Time = Dist / myWeapon.Velocity[2];
+  // Dist = Dist - myWeapon.ZeroingRad;
+  float DropG = 0.5f * myWeapon.Gravity * Time * Time;
+  float Pitch = atan2(DropG, Dist);
+  float ZeroPitch = atan2(myWeapon.Velocity[1], myWeapon.Velocity[2]);
+  ZeroPitch += myWeapon.ZeroingRad;
+  Pitch += ZeroPitch;
+  AimVector = { AimVector[0] + (Enemy.Velocity[0] * Time) - (LocalPlayer.Velocity[0] * Time), AimVector[1] + (Enemy.Velocity[1] * Time) - (LocalPlayer.Velocity[1] * Time), AimVector[2] + (Enemy.Velocity[2] * Time) - (LocalPlayer.Velocity[2] * Time) };
+  vector<float> WorldVector = WorldToScreen(AimVector, ViewProjection);
+  float PixPerDeg = SCREEN_Y / RadToDeg(ClientFovY);
+  WorldVector[1] += PixPerDeg * RadToDeg(Pitch);
+  return WorldVector;
+}
+
+vector<int> getMoveVector(vector<float> WorldVector) {
+  vector<int> Move = { 0 , 0 };
+
+  if (WorldVector[0] != 0) {
+	if (WorldVector[0] > (SCREEN_X / 2)) {
+	  Move[0] = -(SCREEN_X / 2 - WorldVector[0]);
+	  if (Move[0] + (SCREEN_X / 2) > SCREEN_X) Move[0] = 0;
 	}
 	else {
-	  int i = findWeapon(myWeapon.Name);
-	  WeaponList[i] = myWeapon;
+	  Move[0] = WorldVector[0] - SCREEN_X / 2;
+	  if (Move[0] + (SCREEN_X / 2) <= 0) Move[0] = 0;
+	}
+  }
+  if (WorldVector[1] != 0) {
+	if (WorldVector[1] > (SCREEN_Y / 2)) {
+	  Move[1] = -(SCREEN_Y / 2 - WorldVector[1]);
+	  if (Move[1] + (SCREEN_Y / 2) > SCREEN_Y) Move[1] = 0;
+	}
+	else {
+	  Move[1] = WorldVector[1] - SCREEN_Y / 2;
+	  if (Move[1] + (SCREEN_Y / 2) <= 0) Move[1] = 0;
 	}
   }
 
-  return myWeapon;
+  return Move;
 }
 
-void noRecoil(BOOL removeRecoil) {
-  DWORD64 CurrentWeapon, CFiring, WeaponSway, WeaponSwayData;
-
-  CurrentWeapon = getWeaponPointer();
-  if (Valid(CurrentWeapon)) {
-	CFiring = *(DWORD64*)(CurrentWeapon + 0x49c0);
-	if (Valid(CFiring)) {
-	  WeaponSway = *(DWORD64*)(CFiring + 0x78);
-	  if (Valid(WeaponSway)) {
-		WeaponSwayData = *(DWORD64*)(WeaponSway + 0x8);
-		if (Valid(WeaponSwayData)) {
-		  if (removeRecoil) {
-			*(float*)(WeaponSwayData + 0x444) = 0;
-			*(float*)(WeaponSwayData + 0x440) = 100;
-		  }
-		  else {
-			WeaponData myWeapon = getWeaponData(CurrentWeapon);
-			if (!myWeapon.successRead) return;
-			int i = findWeapon(myWeapon.Name);
-			*(float*)(WeaponSwayData + 0x444) = BackupWeaponList[i].ADSRecoil;
-			*(float*)(WeaponSwayData + 0x440) = BackupWeaponList[i].HipRecoil;
-		  }
-		}
-	  }
-	}
-  }
+DWORD64 getFunctionCallAddress(DWORD64 baseAddress, DWORD64 functionAddress) {
+  DWORD64 bytes = 0x00;
+  bytes += 0xE8;
+  DWORD64 sub = functionAddress - baseAddress - 0x5;
+  bytes += sub << 8 & 0xff00;
+  bytes += sub << 8 & 0xff0000;
+  bytes += sub << 8 & 0xff000000;
+  bytes += sub << 8 & 0xff00000000;
+  return bytes;
 }
 
-void noSpread(BOOL removeSpread) {
-  DWORD64 CurrentWeapon, CFiring, WeaponSway, WeaponSwayData;
+DWORD64 byteToMem(DWORD64 byte, SIZE_T size) {
+  DWORD64 mem = 0x00;
+  for (__int64 i = 0; i < 8; i++) {
+	mem = mem << 8;
+	mem += byte >> (i * 8) & 0xff;
+  }
 
-  CurrentWeapon = getWeaponPointer();
-  CFiring = *(DWORD64*)(CurrentWeapon + 0x49c0);
-  WeaponSway = *(DWORD64*)(CFiring + 0x78);
-  WeaponSwayData = *(DWORD64*)(WeaponSway + 0x8);
-  if (removeSpread) {
-	*(float*)(WeaponSwayData + 0x430) = 0;
-	*(float*)(WeaponSwayData + 0x434) = 0;
-	*(float*)(WeaponSwayData + 0x438) = 0;
-	*(float*)(WeaponSwayData + 0x43c) = 0;
-  }
-  else {
-	*(float*)(WeaponSwayData + 0x430) = 0;
-	*(float*)(WeaponSwayData + 0x434) = 0;
-	*(float*)(WeaponSwayData + 0x438) = 0;
-	*(float*)(WeaponSwayData + 0x43c) = 0;
-  }
-}
-
-void updateWeapon() {
-  WeaponData myWeapon = getWeaponData();
-  if (!myWeapon.successRead) return;
-  if (B_NORECOIL) {
-	if (myWeapon.ADSRecoil != 0 || myWeapon.HipRecoil != 100) {
-	  noRecoil(true);
-	}
-  }
-  else {
-	if (myWeapon.ADSRecoil == 0 && myWeapon.HipRecoil == 100) {
-	  noRecoil(false);
-	}
-  }
-  if (B_NOSPREAD) {
-	if (myWeapon.WeaponSpread == 1) {
-	  noSpread(true);
-	}
-  }
-  else {
-	if (myWeapon.WeaponSpread == 0) {
-	  noSpread(false);
-	}
-  }
-}
-
-void mainFlow() {
-  while (1) {
-	if (B_MINIMAPSPOT) minimapSpot();
-	updateWeapon();
-	if (closeThread) {
-	  threadHasClosed = true;
-	  return;
-	}
-	Sleep(16);
-  }
+  return mem;
 }

@@ -1,30 +1,43 @@
+#include "includes.h"
+#include "globals.h"
+#include "classes.h"
 #include "functions.h"
 #include "aimbot.h"
+#include "mainFlow.h"
+
+void testFunc() {
+  DWORD64 offset;
+  for (int i = 0; i < 1000; i++) {
+	readBytes(moduleBase + 0x2670D80, &offset, 8);
+  }
+  return;
+}
 
 int WINAPI Main(HMODULE hModule) {
   AllocConsole();
   FILE* f;
   freopen_s(&f, "CONOUT$", "w", stdout);
 
-  cout << "BF4 Internal                 ;by INK" << endl << endl;
-
   loadGameContext();
 
-  CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)mainFlow, NULL, NULL, NULL);
+  cout << "Game Context loaded!    Initializing..." << endl;
+  Sleep(1000);
 
-  string message;
+  updateConsole();
+
+  // CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)mainFlow, NULL, NULL, NULL);
 
   while (true) {
 	if (GetAsyncKeyState(VK_NUMPAD1)) {
 	  B_NORECOIL = !B_NORECOIL;
-	  message = B_NORECOIL ? "No Recoil Enabled!" : "No Recoil Disabled!";
-	  cout << message << endl;
+	  updateConsole();
+	  noRecoil(B_NORECOIL);
 	  while (GetAsyncKeyState(VK_NUMPAD1)) {}
 	}
 	if (GetAsyncKeyState(VK_NUMPAD2)) {
 	  B_NOSPREAD = !B_NOSPREAD;
-	  message = B_NOSPREAD ? "No Spread Enabled!" : "No Spread Disabled!";
-	  cout << message << endl;
+	  updateConsole();
+	  noSpread(B_NOSPREAD);
 	  while (GetAsyncKeyState(VK_NUMPAD2)) {}
 	}
 	if (GetAsyncKeyState(VK_NUMPAD5)) {
@@ -34,8 +47,7 @@ int WINAPI Main(HMODULE hModule) {
 		aimbotThreadHasClosed = false;
 		CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)aimbotThread, NULL, NULL, NULL);
 	  }
-	  string key = (AIMBOT_KEY == 1) ? "Left Alt" : "Right Mouse Button";
-	  if (AIMBOT_KEY > 0) cout << "Aimbot Key: " << key << endl;
+	  updateConsole();
 	  while (GetAsyncKeyState(VK_NUMPAD5)) {}
 	}
 	if (GetAsyncKeyState(VK_NUMPAD6)) {
@@ -55,23 +67,38 @@ int WINAPI Main(HMODULE hModule) {
 		BONE_INDEX = 104;
 		break;
 	  }
-	  string bone = (AIMBOT_TARGET == 1) ? "Head" : (AIMBOT_TARGET == 2) ? "Neck" : (AIMBOT_TARGET == 3) ? "Spine 1" : "Spine 2";
-	  cout << "Aimbot target changed to " << bone << "!" << endl;
+	  updateConsole();
 	  while (GetAsyncKeyState(VK_NUMPAD6)) {}
 	}
 	if (GetAsyncKeyState(VK_NUMPAD7)) {
 	  B_MINIMAPSPOT = !B_MINIMAPSPOT;
-	  message = B_MINIMAPSPOT ? "Minimap Spotting Enabled!" : "Minimap Spotting Disabled!";
-	  cout << message << endl;
+	  updateConsole();
+	  minimapSpot(B_MINIMAPSPOT);
 	  while (GetAsyncKeyState(VK_NUMPAD7)) {}
+	}
+	if (GetAsyncKeyState(VK_NUMPAD8)) {
+	  B_CHAMS = !B_CHAMS;
+	  updateConsole();
+	  engineChams(B_CHAMS);
+	  while (GetAsyncKeyState(VK_NUMPAD8)) {}
+	 }
+	if (GetAsyncKeyState(VK_NUMPAD9)) {
+	  B_HARDCORE = !B_HARDCORE;
+	  updateConsole();
+	  noHardcoreHUD(B_HARDCORE);
+	  while (GetAsyncKeyState(VK_NUMPAD9)) {}
 	}
 
 	if (GetAsyncKeyState(VK_END) & 1) {
-	  closeThread = true;
+	  clearConsole();
 	  AIMBOT_KEY = 0;
+	  minimapSpot();
+	  engineChams();
+	  noRecoil();
+	  noSpread();
 	  cout << "Exiting!" << endl;
 	  Sleep(500);
-	  while (!threadHasClosed || !aimbotThreadHasClosed) {}
+	  while (!aimbotThreadHasClosed) {}
 	  break;
 	}
   }

@@ -152,9 +152,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="aimbot.h" />
+    <ClInclude Include="classes.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="functions.h" />
+    <ClInclude Include="globals.h" />
+    <ClInclude Include="includes.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="updater.h" />
+    <ClInclude Include="mainFlow.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
